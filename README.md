@@ -1,14 +1,24 @@
-# Google Stock Price Prediction using Facebook Prophet
+# Google Stock Price Prediction using LSTM
 
-Wanted to try something different from the usual LSTM approach for time series, Prophet handles seasonality out of the box and the results are actually interpretable, which I liked. Used Google's historical stock data and forecasted 365 days ahead.
+Wanted to go beyond classical ML for this one. Built a stacked LSTM deep learning model to predict Google's stock closing price and then wrapped it in an interactive Streamlit app where you can pick how many days ahead you want to forecast and see the model's prediction day by day.
+
+🚀 **[Live Demo → stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app](https://stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app/)**
 
 ---
 
 ## What this is
 
-Most stock prediction projects just throw an LSTM at the data and call it a day. Prophet is different, it explicitly models trend + weekly seasonality + yearly seasonality as separate components, so you can actually understand *why* it's predicting what it's predicting.
+Most stock prediction projects just show a predicted vs actual plot and call it done. This one goes further the app lets you pick a forecast horizon (1–30 days), hit Generate, and the model iteratively predicts each day by sliding its 60-day input window forward. You get a chart, a day-by-day table, and a UP/DOWN trend summary.
 
-This project uses Meta's Prophet library on Google (GOOG) historical closing prices to forecast the next year of stock movement.
+No saved model file the LSTM trains on app startup using `@st.cache_resource` so it only runs once per session, then stays cached.
+
+---
+
+## Demo
+
+![App Screenshot](images/app_screenshot.png)
+
+> **[→ Open Live App](https://stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app/)**
 
 ---
 
@@ -16,17 +26,17 @@ This project uses Meta's Prophet library on Google (GOOG) historical closing pri
 
 Google (GOOG) historical stock data from Yahoo Finance.
 
-| Column | Description |
-|--------|-------------|
-| Date | Trading date |
-| Open | Opening price |
-| High | Daily high |
-| Low | Daily low |
-| Close | **Closing price (used for prediction)** |
-| Volume | Number of shares traded |
+| Column    | Description                             |
+| --------- | --------------------------------------- |
+| Date      | Trading date                            |
+| Open      | Opening price                           |
+| High      | Daily high                              |
+| Low       | Daily low                               |
+| **Close** | **Closing price : used for prediction** |
+| Volume    | Shares traded                           |
 
-Download: [GOOG.csv](dataset/GOOG.csv)  
-Source: [Yahoo Finance](https://finance.yahoo.com/quote/GOOG)
+Source: [Yahoo Finance : GOOG](https://finance.yahoo.com/quote/GOOG)  
+Download: [GOOG.csv](dataset/GOOG.csv)
 
 ---
 
@@ -42,7 +52,8 @@ stock-price-prediction/
 ├── images/
 │   ├── closing_price.png
 │   ├── prediction.png
-│   └── components.png
+│   └── app_screenshot.png
+├── app.py
 ├── requirements.txt
 └── README.md
 ```
@@ -51,75 +62,76 @@ stock-price-prediction/
 
 ## What I did
 
-**1. Explored the data**  
-Plotted the raw closing price history to get a feel for the overall trend before touching any model.
+**1. Explored the data**
+Plotted raw closing price to understand the long-term trend. GOOG shows a strong upward trend with a dip around day 150 likely reflecting a broader market correction period.
 
-**2. Prepared data for Prophet**  
-Prophet is strict about input format, needs exactly two columns named `ds` (date) and `y` (value). Extracted just `Date` and `Close`, renamed them, and converted `ds` to datetime.
+**2. Preprocessing**
 
-**3. Trained the model**  
-Fitted Prophet with `daily_seasonality=True`. Training is fast, Prophet isn't a neural network, it's a curve-fitting model using Stan under the hood, so no GPU needed.
+- Extracted only the `Close` column
+- Applied `MinMaxScaler` to normalize values to [0, 1] required for LSTM to train stably
+- Built 60-day sliding window sequences: X = [day1..day60], y = day61
+- 80/20 train-test split (test set includes 60-day lookback overlap)
 
-**4. Forecasted 365 days ahead**  
-Used `make_future_dataframe(periods=365)` to extend the date range and `predict()` to get `yhat` (prediction), `yhat_lower` and `yhat_upper` (confidence interval bounds).
+**3. Model architecture**
+Stacked LSTM with Dropout regularization to prevent overfitting:
 
-**5. Analyzed components**  
-The components plot was the most useful part — breaks the forecast into trend, weekly pattern, and yearly pattern separately.
+```
+LSTM(50 units, return_sequences=True)
+Dropout(0.2)
+LSTM(50 units, return_sequences=False)
+Dropout(0.2)
+Dense(1)
+```
+
+**4. Training**
+
+- Optimizer: Adam
+- Loss: Mean Squared Error
+- Epochs: 20, Batch size: 32
+- Validation split: 10%
+
+**5. Forecasting**
+For multi-day forecasting, the model predicts day N+1, appends it to the input window, drops day 1, and repeats sliding the window forward iteratively for however many days the user selects.
+
+**6. Deployment**
+Deployed on Streamlit Cloud. Model trains on first load and is cached for the session no model file stored in the repo.
 
 ---
 
 ## Results
 
+| Metric           | Value                   |
+| ---------------- | ----------------------- |
+| Model            | Stacked LSTM (2 layers) |
+| Training split   | 80/20                   |
+| Look-back window | 60 days                 |
+| RMSE on test set | ~$42                    |
+| Forecast horizon | Up to 30 days           |
+
+---
+
+## Visualizations
+
 **Historical Closing Price**
 
 ![Closing Price](images/closing_price.png)
 
-**365-Day Forecast**  
-Black dots = actual data, blue line = predicted, shaded region = uncertainty interval
+**Predicted vs Actual : Test Set**
 
 ![Prediction](images/prediction.png)
 
-**Seasonal Components**  
-Trend + weekly seasonality + yearly seasonality broken down individually
-
-![Components](images/components.png)
-
 ---
 
-## Key Observations
-
-- Long-term trend is strongly upward as expected for GOOG
-- Weekly pattern shows slight dip early in the week likely reflects trading behavior
-- Yearly seasonality shows mid-year peaks, which loosely aligns with earnings season activity
-- Confidence interval widens significantly for future dates honest uncertainty quantification
-
----
-
-## Why Prophet over LSTM?
-
-| | Prophet | LSTM |
-|--|---------|------|
-| Interpretability | High & decomposed components | Low — black box |
-| Training speed | Very fast (seconds) | Slow (minutes to hours) |
-| Handles seasonality | Built-in | Needs manual feature engineering |
-| Data needed | Works on smaller datasets | Needs a lot of data |
-| Best for | Trend + seasonal patterns | Complex sequential patterns |
-
-For stock data with clear yearly and weekly patterns, Prophet is actually a solid choice and much easier to explain.
-
----
-
-## How to run
+## How to run locally
 
 ```bash
-git clone https://github.com/kushagrakaushik1k/stock-price-prediction
+git clone https://github.com/kushagrakaush1k/stock-price-prediction
 cd stock-price-prediction
 pip install -r requirements.txt
+streamlit run app.py
 ```
 
-Open `notebook/stock_price_prediction.ipynb` in VS Code or Jupyter and run all cells.
-
-> **Note:** Use `prophet` not `fbprophet` — fbprophet is the old package name and breaks on Python 3.9+.
+App opens at `localhost:8501`. Model trains on first run (~2 mins), then stays cached.
 
 ---
 
@@ -129,21 +141,24 @@ Open `notebook/stock_price_prediction.ipynb` in VS Code or Jupyter and run all c
 pandas
 numpy
 matplotlib
-prophet
+scikit-learn
+streamlit
+tensorflow-cpu
 ```
 
 ---
 
 ## Takeaways
 
-- Prophet's decomposition approach makes forecasting explainable in a way LSTM can't match
-- The uncertainty intervals are genuinely useful, they widen over time, which is honest about how predictable stock prices actually are.
-- For anything with strong seasonal patterns, Prophet should be the first thing you try before going deep learning.
+- LSTM is well-suited for time series because it remembers patterns across long sequences unlike a regular neural network that treats each input independently
+- The 60-day look-back window was a deliberate choice too short and the model misses trends, too long and it overfits to old patterns
+- Multi-day forecasting compounds error the model is confident for 1–5 days but uncertainty grows beyond that, which is honest about how predictable stock prices actually are
+- Training inside Streamlit with `@st.cache_resource` avoids storing a model file, which also sidesteps Keras version conflicts across environments
 
 ---
 
 ## References
 
 - [Original article by Aman Kharwal](https://amanxai.com/2020/08/09/stock-price-prediction-with-facebook-prophet-model/)
-- [Prophet Documentation](https://facebook.github.io/prophet/)
-- [GOOG data — Yahoo Finance](https://finance.yahoo.com/quote/GOOG)
+- [GOOG data : Yahoo Finance](https://finance.yahoo.com/quote/GOOG)
+- [Keras LSTM documentation](https://keras.io/api/layers/recurrent_layers/lstm/)
