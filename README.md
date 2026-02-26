@@ -2,7 +2,7 @@
 
 Wanted to go beyond classical ML for this one. Built a stacked LSTM deep learning model to predict Google's stock closing price and then wrapped it in an interactive Streamlit app where you can pick how many days ahead you want to forecast and see the model's prediction day by day.
 
-🚀 **[Live Demo → stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app](https://stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app/)**
+ **[Live Demo → stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app](https://stock-price-prediction-lstm-mafteelnla8lryaiuucjeg.streamlit.app/)**
 
 ---
 
